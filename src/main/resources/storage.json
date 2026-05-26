@@ -44,7 +44,7 @@
         "retry_max_ms": 10000,
         "ack_header_name": "X-BaudBound-Ack",
         "ack_header_value": "queued",
-        "input_regex": "^.*?P?([0-9]+[\\.,][0-9]+).*?$",
+        "input_regex": "^\\s*P([0-9]{4}[\\.,][0-9]{2})\\s*[@\\u00a7]?\\s*$",
         "input_replacement": "$1",
         "min_interval_ms": 1000
       }
@@ -75,7 +75,7 @@
       "conditions": [
         {
           "type": "INPUT_REGEX",
-          "value": "^.*?P?([0-9]+[\\.,][0-9]+).*?$",
+          "value": "^\\s*P([0-9]{4}[\\.,][0-9]{2})\\s*[@\\u00a7]?\\s*$",
           "case_sensitive": false
         }
       ],
