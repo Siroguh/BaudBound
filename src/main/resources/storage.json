@@ -10,18 +10,83 @@
       "skip_empty_conditions": false
     },
     "graphics": {
-      "vsync": true,
-      "fps_limit": 0
+      "vsync": false,
+      "fps_limit": 60
     },
     "debug": {
       "overlay": false,
       "sample_interval": 2
+    },
+    "websocket": {
+      "enabled": true,
+      "host": "0.0.0.0",
+      "port": 8765,
+      "auth_token": "new-logi-scale"
     }
   },
   "actions": {
-    "webhooks": [],
+    "webhooks": [
+      {
+        "name": "New Logi Scale Reading",
+        "url": "http://127.0.0.1:3000/bascula/readings",
+        "method": "POST",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": "{\n  \"deliveryId\": \"{delivery.id}\",\n  \"input\": \"{input}\",\n  \"raw\": \"{input.raw}\",\n  \"sequence\": \"{sequence}\",\n  \"weight\": \"{input}\",\n  \"device\": \"{device}\",\n  \"source\": \"{source}\",\n  \"timestamp\": \"{timestamp}\"\n}",
+        "url_escape": false,
+        "durable_delivery": true,
+        "max_attempts": 0,
+        "retry_initial_ms": 1000,
+        "retry_max_ms": 10000,
+        "ack_header_name": "X-BaudBound-Ack",
+        "ack_header_value": "queued",
+        "input_regex": "^.*?P?([0-9]+[\\.,][0-9]+).*?$",
+        "input_replacement": "$1"
+      }
+    ],
     "programs": []
   },
-  "devices": [],
-  "events": []
+  "devices": [
+    {
+      "name": "Scale COM",
+      "port": "ttyUSB_NEW_LOGI",
+      "baud_rate": 9600,
+      "data_bits": 8,
+      "stop_bits": 1,
+      "parity": "NO",
+      "flow_control": "DISABLED",
+      "auto_connect": true,
+      "auto_reconnect": true,
+      "reconnect_delay": 5,
+      "max_retries": 1000,
+      "verify_device": false,
+      "device_vendor_id": 0,
+      "device_product_id": 0
+    }
+  ],
+  "events": [
+    {
+      "name": "Send scale reading to new_logi",
+      "conditions": [
+        {
+          "type": "INPUT_REGEX",
+          "value": "^.*?P?([0-9]+[\\.,][0-9]+).*?$",
+          "case_sensitive": false
+        }
+      ],
+      "actions": [
+        {
+          "type": "CALL_WEBHOOK",
+          "value": "New Logi Scale Reading"
+        }
+      ],
+      "trigger_sources": [
+        "SERIAL"
+      ]
+    }
+  ]
 }
