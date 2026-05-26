@@ -46,7 +46,7 @@
         "ack_header_value": "queued",
         "input_regex": "^\\s*P([0-9]{4}[\\.,][0-9]{2})\\s*[@\\u00a7]?\\s*$",
         "input_replacement": "$1",
-        "min_interval_ms": 1000
+        "min_interval_ms": 200
       }
     ],
     "programs": []
@@ -54,7 +54,7 @@
   "devices": [
     {
       "name": "Scale COM",
-      "port": "ttyUSB_NEW_LOGI",
+      "port": "COM8",
       "baud_rate": 9600,
       "data_bits": 8,
       "stop_bits": 1,
