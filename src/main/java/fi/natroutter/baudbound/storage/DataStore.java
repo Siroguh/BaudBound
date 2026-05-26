@@ -425,6 +425,9 @@ public class DataStore {
             @SerializedName("input_replacement")
             private String inputReplacement;
 
+            @SerializedName("min_interval_ms")
+            private Integer minIntervalMs;
+
             public int getEffectiveMaxAttempts() {
                 return maxAttempts < 0 ? 0 : maxAttempts;
             }
@@ -437,13 +440,18 @@ public class DataStore {
                 return retryMaxMs > 0 ? retryMaxMs : 60_000;
             }
 
+            public int getEffectiveMinIntervalMs() {
+                if (minIntervalMs != null) return Math.max(0, minIntervalMs);
+                return "New Logi Scale Reading".equals(name) ? 1_000 : 0;
+            }
+
             /** Returns a fully independent deep copy of this webhook (headers list is not shared). */
             public Webhook deepCopy() {
                 List<Header> headersCopy = headers == null ? new ArrayList<>() :
                         headers.stream().map(h -> new Header(h.getKey(), h.getValue())).toList();
                 return new Webhook(name, url, method, headersCopy, body, urlEscape,
                         durableDelivery, maxAttempts, retryInitialMs, retryMaxMs,
-                        ackBodyContains, ackHeaderName, ackHeaderValue, inputRegex, inputReplacement);
+                        ackBodyContains, ackHeaderName, ackHeaderValue, inputRegex, inputReplacement, minIntervalMs);
             }
 
             @Data

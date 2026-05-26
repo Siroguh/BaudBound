@@ -270,7 +270,7 @@ public class WebhookEditorDialog extends BaseDialog {
                 fieldName.get().trim(), url, method, buildHeaders(), body.isEmpty() ? null : body, fieldUrlEscape.get(),
                 false, fieldMaxAttempts.get(), fieldRetryInitialMs.get(), fieldRetryMaxMs.get(),
                 blankToNull(fieldAckBodyContains.get()), blankToNull(fieldAckHeaderName.get()), blankToNull(fieldAckHeaderValue.get()),
-                blankToNull(fieldInputRegex.get()), blankToNull(fieldInputReplacement.get()));
+                blankToNull(fieldInputRegex.get()), blankToNull(fieldInputReplacement.get()), 0);
 
         testing = true;
         Thread.ofVirtual().start(() -> {
@@ -323,7 +323,7 @@ public class WebhookEditorDialog extends BaseDialog {
             webhooks.add(new DataStore.Actions.Webhook(name, url, method, buildHeaders(), body, fieldUrlEscape.get(),
                     fieldDurableDelivery.get(), fieldMaxAttempts.get(), fieldRetryInitialMs.get(), fieldRetryMaxMs.get(),
                     blankToNull(fieldAckBodyContains.get()), blankToNull(fieldAckHeaderName.get()), blankToNull(fieldAckHeaderValue.get()),
-                    blankToNull(fieldInputRegex.get()), blankToNull(fieldInputReplacement.get())));
+                    blankToNull(fieldInputRegex.get()), blankToNull(fieldInputReplacement.get()), 0));
         }
 
         storage.save();

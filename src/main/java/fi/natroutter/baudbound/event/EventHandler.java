@@ -73,6 +73,9 @@ public class EventHandler {
     /** Cache of compiled regex patterns keyed by pattern string to avoid recompilation on every condition check. */
     private final Map<String, Pattern> patternCache = new ConcurrentHashMap<>();
 
+    /** Last dispatch timestamp per webhook name for lightweight outbound throttling. */
+    private final Map<String, Long> webhookLastSentAt = new ConcurrentHashMap<>();
+
     /** Cache of the condition-first sorted event list. Invalidated via {@link #invalidateSortCache()}. */
     private volatile List<DataStore.Event> sortedEventsCache = null;
 
@@ -385,6 +388,7 @@ public class EventHandler {
                 .filter(w -> w.getName().equals(webhookName))
                 .findFirst()
                 .ifPresentOrElse(webhook -> {
+                    if (shouldThrottleWebhook(webhook)) return;
                     String deliveryId = webhook.isDurableDelivery() ? UUID.randomUUID().toString() : null;
                     DataStore.Actions.Webhook resolved = resolveWebhook(webhook, context, eventName, deliveryId);
                     if (webhook.isDurableDelivery()) {
@@ -399,6 +403,22 @@ public class EventHandler {
                                 (result.error() != null ? result.error() : result.statusCode()));
                     }
                 }, () -> logger.error("Webhook not found: " + webhookName));
+    }
+
+    private boolean shouldThrottleWebhook(DataStore.Actions.Webhook webhook) {
+        int minIntervalMs = webhook.getEffectiveMinIntervalMs();
+        if (minIntervalMs <= 0) return false;
+        long now = System.currentTimeMillis();
+        String key = webhook.getName() != null ? webhook.getName() : "";
+        final boolean[] throttled = {false};
+        webhookLastSentAt.compute(key, (_k, previous) -> {
+            if (previous != null && now - previous < minIntervalMs) {
+                throttled[0] = true;
+                return previous;
+            }
+            return now;
+        });
+        return throttled[0];
     }
 
     private void openUrl(String url, TriggerContext context, String eventName) throws IOException {
@@ -848,7 +868,8 @@ public class EventHandler {
                 original.getAckHeaderName(),
                 original.getAckHeaderValue(),
                 original.getInputRegex(),
-                original.getInputReplacement()
+                original.getInputReplacement(),
+                original.getMinIntervalMs()
         );
     }
 

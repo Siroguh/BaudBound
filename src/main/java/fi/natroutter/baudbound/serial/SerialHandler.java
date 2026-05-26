@@ -195,7 +195,8 @@ public class SerialHandler {
 
         cleanupPort();
 
-        if (!shuttingDown && status == ConnectionStatus.NO_DEVICE && device.isAutoReconnect()) {
+        if (!shuttingDown && device.isAutoReconnect()
+                && (status == ConnectionStatus.NO_DEVICE || status == ConnectionStatus.FAILED_TO_CONNECT)) {
             startReconnectLoop();
         }
     }

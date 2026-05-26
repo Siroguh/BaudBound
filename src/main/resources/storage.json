@@ -28,7 +28,7 @@
     "webhooks": [
       {
         "name": "New Logi Scale Reading",
-        "url": "http://127.0.0.1:3000/bascula/readings",
+        "url": "http://192.168.2.123:3000/bascula/readings",
         "method": "POST",
         "headers": [
           {
@@ -36,7 +36,7 @@
             "value": "application/json"
           }
         ],
-        "body": "{\n  \"deliveryId\": \"{delivery.id}\",\n  \"input\": \"{input}\",\n  \"raw\": \"{input.raw}\",\n  \"sequence\": \"{sequence}\",\n  \"weight\": \"{input}\",\n  \"device\": \"{device}\",\n  \"source\": \"{source}\",\n  \"timestamp\": \"{timestamp}\"\n}",
+        "body": "{\n  \"deliveryId\": \"{delivery.id}\",\n  \"input\": \"{input}\",\n  \"sequence\": \"{sequence}\",\n  \"weight\": \"{input}\",\n  \"device\": \"{device}\",\n  \"source\": \"{source}\",\n  \"timestamp\": \"{timestamp}\"\n}",
         "url_escape": false,
         "durable_delivery": true,
         "max_attempts": 0,
@@ -45,7 +45,8 @@
         "ack_header_name": "X-BaudBound-Ack",
         "ack_header_value": "queued",
         "input_regex": "^.*?P?([0-9]+[\\.,][0-9]+).*?$",
-        "input_replacement": "$1"
+        "input_replacement": "$1",
+        "min_interval_ms": 1000
       }
     ],
     "programs": []

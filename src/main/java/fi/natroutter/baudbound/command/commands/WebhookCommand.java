@@ -133,7 +133,8 @@ public class WebhookCommand extends Command {
                 original.getAckHeaderName(),
                 original.getAckHeaderValue(),
                 original.getInputRegex(),
-                original.getInputReplacement()
+                original.getInputReplacement(),
+                original.getMinIntervalMs()
         );
     }
 
