@@ -827,10 +827,11 @@ public class EventHandler {
 
         TriggerContext resolveCtx = new TriggerContext(resolvedInput, context.device(), context.source(), context.channel(), context.connection(), context.sequence());
 
-        List<DataStore.Actions.Webhook.Header> resolvedHeaders = original.getHeaders() == null ? List.of() :
+        List<DataStore.Actions.Webhook.Header> resolvedHeaders = new java.util.ArrayList<>(original.getHeaders() == null ? List.of() :
                 original.getHeaders().stream()
                         .map(h -> new DataStore.Actions.Webhook.Header(h.getKey(), resolve(h.getValue(), resolveCtx, eventName, deliveryId, rawInput)))
-                        .toList();
+                        .toList());
+        resolvedHeaders.add(new DataStore.Actions.Webhook.Header("X-BaudBound-Sequence", String.valueOf(context.sequence())));
 
         return new DataStore.Actions.Webhook(
                 original.getName(),
