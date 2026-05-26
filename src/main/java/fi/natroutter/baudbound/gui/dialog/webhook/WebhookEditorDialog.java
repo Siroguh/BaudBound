@@ -43,6 +43,15 @@ public class WebhookEditorDialog extends BaseDialog {
     private final List<ImString[]> fieldHeaders = new ArrayList<>();
     private final ImString  fieldBody      = new ImString(4096);
     private final ImBoolean fieldUrlEscape = new ImBoolean(false);
+    private final ImBoolean fieldDurableDelivery = new ImBoolean(false);
+    private final ImInt     fieldMaxAttempts     = new ImInt(0);
+    private final ImInt     fieldRetryInitialMs  = new ImInt(1_000);
+    private final ImInt     fieldRetryMaxMs      = new ImInt(60_000);
+    private final ImString  fieldAckBodyContains = new ImString(512);
+    private final ImString  fieldAckHeaderName   = new ImString(256);
+    private final ImString  fieldAckHeaderValue  = new ImString(512);
+    private final ImString  fieldInputRegex      = new ImString(1024);
+    private final ImString  fieldInputReplacement = new ImString(1024);
 
     private volatile boolean testing = false;
 
@@ -75,6 +84,15 @@ public class WebhookEditorDialog extends BaseDialog {
             }
             fieldBody.set(webhook.getBody() != null ? webhook.getBody() : "");
             fieldUrlEscape.set(webhook.isUrlEscape());
+            fieldDurableDelivery.set(webhook.isDurableDelivery());
+            fieldMaxAttempts.set(webhook.getEffectiveMaxAttempts());
+            fieldRetryInitialMs.set(webhook.getEffectiveRetryInitialMs());
+            fieldRetryMaxMs.set(webhook.getEffectiveRetryMaxMs());
+            fieldAckBodyContains.set(webhook.getAckBodyContains() != null ? webhook.getAckBodyContains() : "");
+            fieldAckHeaderName.set(webhook.getAckHeaderName() != null ? webhook.getAckHeaderName() : "");
+            fieldAckHeaderValue.set(webhook.getAckHeaderValue() != null ? webhook.getAckHeaderValue() : "");
+            fieldInputRegex.set(webhook.getInputRegex() != null ? webhook.getInputRegex() : "");
+            fieldInputReplacement.set(webhook.getInputReplacement() != null ? webhook.getInputReplacement() : "");
         } else {
             this.editing = null;
             fieldName.set("");
@@ -83,6 +101,15 @@ public class WebhookEditorDialog extends BaseDialog {
             fieldHeaders.clear();
             fieldBody.set("");
             fieldUrlEscape.set(false);
+            fieldDurableDelivery.set(false);
+            fieldMaxAttempts.set(0);
+            fieldRetryInitialMs.set(1_000);
+            fieldRetryMaxMs.set(60_000);
+            fieldAckBodyContains.set("");
+            fieldAckHeaderName.set("");
+            fieldAckHeaderValue.set("");
+            fieldInputRegex.set("");
+            fieldInputReplacement.set("");
         }
 
         requestOpen();
@@ -133,6 +160,66 @@ public class WebhookEditorDialog extends BaseDialog {
                     "Useful when passing serial data as a query parameter or path segment.");
 
             ImGui.spacing();
+            ImGui.separatorText("Input Processing");
+
+            ImGui.text("Input regex");
+            GuiHelper.toolTip("Optional Java regex applied to the raw COM/event input before webhook variables are resolved.\n" +
+                    "If it matches, only the replacement result becomes {input}. Leave blank to send the original input.");
+            ImGui.setNextItemWidth(ImGui.getContentRegionAvailX());
+            ImGui.inputText("##inputregex", fieldInputRegex);
+
+            ImGui.text("Input replacement");
+            GuiHelper.toolTip("Replacement used with the regex. Use $1, $2, etc. for capture groups.\n" +
+                    "Defaults to $1 when regex is set and this field is blank.");
+            ImGui.setNextItemWidth(ImGui.getContentRegionAvailX());
+            ImGui.inputText("##inputreplacement", fieldInputReplacement);
+
+            ImGui.spacing();
+            ImGui.separatorText("Durable Delivery");
+
+            ImGui.checkbox("Require delivery acknowledgement", fieldDurableDelivery);
+            GuiHelper.toolTip("Queue this webhook before sending it and retry until the receiver acknowledges it.\n" +
+                    "Each attempt includes X-BaudBound-Delivery-Id and {delivery.id} for idempotency.");
+
+            ImGui.beginDisabled(!fieldDurableDelivery.get());
+
+            ImGui.text("Max attempts");
+            GuiHelper.toolTip("0 means retry forever. A positive number pauses the queued delivery after that many failed attempts.");
+            ImGui.setNextItemWidth(ImGui.getContentRegionAvailX());
+            if (ImGui.inputInt("##maxattempts", fieldMaxAttempts) && fieldMaxAttempts.get() < 0) {
+                fieldMaxAttempts.set(0);
+            }
+
+            ImGui.text("Initial retry delay (ms)");
+            ImGui.setNextItemWidth(ImGui.getContentRegionAvailX());
+            if (ImGui.inputInt("##retryinitial", fieldRetryInitialMs) && fieldRetryInitialMs.get() < 1) {
+                fieldRetryInitialMs.set(1);
+            }
+
+            ImGui.text("Max retry delay (ms)");
+            ImGui.setNextItemWidth(ImGui.getContentRegionAvailX());
+            if (ImGui.inputInt("##retrymax", fieldRetryMaxMs) && fieldRetryMaxMs.get() < 1) {
+                fieldRetryMaxMs.set(1);
+            }
+
+            ImGui.text("Ack body contains");
+            GuiHelper.toolTip("Optional. When set, HTTP 2xx is not enough; the response body must contain this text.");
+            ImGui.setNextItemWidth(ImGui.getContentRegionAvailX());
+            ImGui.inputText("##ackbody", fieldAckBodyContains);
+
+            ImGui.text("Ack header name");
+            GuiHelper.toolTip("Optional. When set, HTTP 2xx is not enough; the response must include this header.\n" +
+                    "If header value is also set, it must match exactly.");
+            ImGui.setNextItemWidth(ImGui.getContentRegionAvailX());
+            ImGui.inputText("##ackheadername", fieldAckHeaderName);
+
+            ImGui.text("Ack header value");
+            ImGui.setNextItemWidth(ImGui.getContentRegionAvailX());
+            ImGui.inputText("##ackheadervalue", fieldAckHeaderValue);
+
+            ImGui.endDisabled();
+
+            ImGui.spacing();
             ImGui.separator();
             ImGui.spacing();
 
@@ -180,7 +267,10 @@ public class WebhookEditorDialog extends BaseDialog {
         String method = HttpMethod.values()[fieldMethod.get()].name();
         String body = fieldBody.get().trim();
         DataStore.Actions.Webhook tempWebhook = new DataStore.Actions.Webhook(
-                fieldName.get().trim(), url, method, buildHeaders(), body.isEmpty() ? null : body, fieldUrlEscape.get());
+                fieldName.get().trim(), url, method, buildHeaders(), body.isEmpty() ? null : body, fieldUrlEscape.get(),
+                false, fieldMaxAttempts.get(), fieldRetryInitialMs.get(), fieldRetryMaxMs.get(),
+                blankToNull(fieldAckBodyContains.get()), blankToNull(fieldAckHeaderName.get()), blankToNull(fieldAckHeaderValue.get()),
+                blankToNull(fieldInputRegex.get()), blankToNull(fieldInputReplacement.get()));
 
         testing = true;
         Thread.ofVirtual().start(() -> {
@@ -220,12 +310,30 @@ public class WebhookEditorDialog extends BaseDialog {
             editing.setHeaders(buildHeaders());
             editing.setBody(body);
             editing.setUrlEscape(fieldUrlEscape.get());
+            editing.setDurableDelivery(fieldDurableDelivery.get());
+            editing.setMaxAttempts(fieldMaxAttempts.get());
+            editing.setRetryInitialMs(fieldRetryInitialMs.get());
+            editing.setRetryMaxMs(fieldRetryMaxMs.get());
+            editing.setAckBodyContains(blankToNull(fieldAckBodyContains.get()));
+            editing.setAckHeaderName(blankToNull(fieldAckHeaderName.get()));
+            editing.setAckHeaderValue(blankToNull(fieldAckHeaderValue.get()));
+            editing.setInputRegex(blankToNull(fieldInputRegex.get()));
+            editing.setInputReplacement(blankToNull(fieldInputReplacement.get()));
         } else {
-            webhooks.add(new DataStore.Actions.Webhook(name, url, method, buildHeaders(), body, fieldUrlEscape.get()));
+            webhooks.add(new DataStore.Actions.Webhook(name, url, method, buildHeaders(), body, fieldUrlEscape.get(),
+                    fieldDurableDelivery.get(), fieldMaxAttempts.get(), fieldRetryInitialMs.get(), fieldRetryMaxMs.get(),
+                    blankToNull(fieldAckBodyContains.get()), blankToNull(fieldAckHeaderName.get()), blankToNull(fieldAckHeaderValue.get()),
+                    blankToNull(fieldInputRegex.get()), blankToNull(fieldInputReplacement.get())));
         }
 
         storage.save();
         ImGui.closeCurrentPopup();
         BaudBound.getMessageDialog().show("Saved", "Webhook \"" + name + "\" saved successfully.", new DialogButton("OK", () -> BaudBound.getWebhooksWindow().show()));
+    }
+
+    private static String blankToNull(String value) {
+        if (value == null) return null;
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }

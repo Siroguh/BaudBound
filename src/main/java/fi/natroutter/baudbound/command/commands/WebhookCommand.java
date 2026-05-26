@@ -9,8 +9,13 @@ import fi.natroutter.foxlib.FoxLib;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Console command for listing and manually firing configured webhooks.
@@ -60,9 +65,11 @@ public class WebhookCommand extends Command {
         List<String> rows = webhooks.stream().map(w -> {
             String name   = w.getName() + " ".repeat(nameWidth - w.getName().length());
             String method = w.getMethod() != null ? w.getMethod() : "GET";
-            return "{BLUE}" + name + "{RESET}  {CYAN}" + method + "{RESET}  {WHITE}" + w.getUrl();
+            String durable = w.isDurableDelivery() ? "  {BRIGHT_GREEN}durable{RESET}" : "";
+            return "{BLUE}" + name + "{RESET}  {CYAN}" + method + "{RESET}" + durable + "  {WHITE}" + w.getUrl();
         }).toList();
-        ConsoleUI.printBox("Webhooks  (" + webhooks.size() + ")", rows);
+        ConsoleUI.printBox("Webhooks  (" + webhooks.size() + ", queue="
+                + BaudBound.getWebhookDeliveryQueue().pendingCount() + ")", rows);
     }
 
     private void handleFire(String name, String input) {
@@ -75,9 +82,15 @@ public class WebhookCommand extends Command {
             return;
         }
 
+        String deliveryId = webhook.isDurableDelivery() ? UUID.randomUUID().toString() : null;
         log("Console: firing webhook \"" + name + "\" with input: \"" + input + "\"");
         FoxLib.println("  {CYAN}Firing \"" + name + "\" with input: \"" + input + "\"...{RESET}");
-        final DataStore.Actions.Webhook resolved = resolveWebhook(webhook, input);
+        final DataStore.Actions.Webhook resolved = resolveWebhook(webhook, input, deliveryId);
+        if (webhook.isDurableDelivery()) {
+            String id = BaudBound.getWebhookDeliveryQueue().enqueue(deliveryId, resolved, "console");
+            FoxLib.println("  {BRIGHT_GREEN}Queued durable delivery " + id + ".{RESET}");
+            return;
+        }
         Thread.ofVirtual().start(() -> {
             HttpHandler.WebhookResult result = HttpHandler.fireWebhook(resolved);
             if (result.success()) {
@@ -95,24 +108,54 @@ public class WebhookCommand extends Command {
      * Returns a copy of {@code original} with {@code {input}} and {@code {timestamp}}
      * substituted in the URL, headers, and body.
      */
-    private static DataStore.Actions.Webhook resolveWebhook(DataStore.Actions.Webhook original, String input) {
+    private static DataStore.Actions.Webhook resolveWebhook(DataStore.Actions.Webhook original, String input, String deliveryId) {
         String timestamp = LocalDateTime.now().format(TIMESTAMP_FORMAT);
+        String processedInput = preprocessInput(original, input);
+        String resolvedInput = original.isUrlEscape()
+                ? URLEncoder.encode(processedInput, StandardCharsets.UTF_8)
+                : processedInput;
         List<DataStore.Actions.Webhook.Header> headers = original.getHeaders() == null ? List.of() :
                 original.getHeaders().stream()
-                        .map(h -> new DataStore.Actions.Webhook.Header(h.getKey(), resolve(h.getValue(), input, timestamp)))
+                        .map(h -> new DataStore.Actions.Webhook.Header(h.getKey(), resolve(h.getValue(), resolvedInput, timestamp, deliveryId)))
                         .toList();
         return new DataStore.Actions.Webhook(
                 original.getName(),
-                resolve(original.getUrl(), input, timestamp),
+                resolve(original.getUrl(), resolvedInput, timestamp, deliveryId),
                 original.getMethod(),
                 headers,
-                resolve(original.getBody(), input, timestamp),
-                original.isUrlEscape()
+                resolve(original.getBody(), resolvedInput, timestamp, deliveryId),
+                original.isUrlEscape(),
+                original.isDurableDelivery(),
+                original.getMaxAttempts(),
+                original.getRetryInitialMs(),
+                original.getRetryMaxMs(),
+                original.getAckBodyContains(),
+                original.getAckHeaderName(),
+                original.getAckHeaderValue(),
+                original.getInputRegex(),
+                original.getInputReplacement()
         );
     }
 
-    private static String resolve(String template, String input, String timestamp) {
+    private static String resolve(String template, String input, String timestamp, String deliveryId) {
         if (template == null) return null;
-        return template.replace("{input}", input).replace("{timestamp}", timestamp);
+        return template
+                .replace("{input}", input)
+                .replace("{timestamp}", timestamp)
+                .replace("{delivery.id}", deliveryId != null ? deliveryId : "");
+    }
+
+    private static String preprocessInput(DataStore.Actions.Webhook webhook, String input) {
+        String regex = webhook.getInputRegex();
+        if (regex == null || regex.isBlank()) return input;
+        String replacement = webhook.getInputReplacement();
+        if (replacement == null || replacement.isBlank()) replacement = "$1";
+        try {
+            Matcher matcher = Pattern.compile(regex).matcher(input);
+            return matcher.find() ? matcher.replaceFirst(replacement) : input;
+        } catch (Exception e) {
+            BaudBound.getLogger().error("Console: webhook input preprocessing failed: " + e.getMessage());
+            return input;
+        }
     }
 }

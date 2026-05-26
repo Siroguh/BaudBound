@@ -28,6 +28,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * <p><b>Authentication:</b> When an {@code authToken} is configured, connecting clients must
  * send {@code AUTH:<token>} as their first message before any subsequent messages are processed.
  * Unauthenticated messages result in the connection being closed.
+ * Authenticated clients may send {@code ACK:<delivery-id>} to acknowledge a pending durable
+ * webhook delivery, or {@code ACK_RESET} / {@code ACK_RESET:<delivery-id>} to clear pending
+ * deliveries after the downstream queue has been reset, without firing a normal WebSocket event.
  *
  * <p>Incoming messages are appended to a bounded {@link #getMessageLog() message log}
  * (max {@value #MAX_LOG_ENTRIES} entries) for display in {@code WebSocketWindow}.
@@ -99,6 +102,36 @@ public class WebSocketHandler extends WebSocketServer {
                         + conn.getRemoteSocketAddress() + " — closing connection");
                 conn.close();
             }
+            return;
+        }
+
+        if (message.equals("ACK_RESET") || message.equals("QUEUE_RESET")) {
+            int removed = BaudBound.getWebhookDeliveryQueue()
+                    .resetAll("WebSocket " + conn.getRemoteSocketAddress());
+            appendLog("[ACK RESET] [" + channel + "] all  removed=" + removed);
+            BaudBound.getLogger().warn("WebSocket: [" + channel + "] durable queue reset accepted — removed "
+                    + removed + " pending delivery item(s)");
+            return;
+        }
+
+        if (message.startsWith("ACK_RESET:") || message.startsWith("QUEUE_RESET:")) {
+            String prefix = message.startsWith("ACK_RESET:") ? "ACK_RESET:" : "QUEUE_RESET:";
+            String deliveryId = message.substring(prefix.length()).trim();
+            boolean reset = BaudBound.getWebhookDeliveryQueue()
+                    .reset(deliveryId, "WebSocket " + conn.getRemoteSocketAddress());
+            appendLog("[ACK RESET] [" + channel + "] " + deliveryId + "  " + (reset ? "accepted" : "not found"));
+            BaudBound.getLogger().warn("WebSocket: [" + channel + "] delivery reset " + deliveryId
+                    + (reset ? " accepted" : " ignored — no pending delivery"));
+            return;
+        }
+
+        if (message.startsWith("ACK:")) {
+            String deliveryId = message.substring("ACK:".length()).trim();
+            boolean acknowledged = BaudBound.getWebhookDeliveryQueue()
+                    .acknowledge(deliveryId, "WebSocket " + conn.getRemoteSocketAddress());
+            appendLog("[ACK] [" + channel + "] " + deliveryId + "  " + (acknowledged ? "accepted" : "not found"));
+            BaudBound.getLogger().info("WebSocket: [" + channel + "] delivery ack " + deliveryId
+                    + (acknowledged ? " accepted" : " ignored — no pending delivery"));
             return;
         }
 

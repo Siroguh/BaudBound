@@ -9,6 +9,7 @@ import fi.natroutter.foxlib.logger.FoxLogger;
 import fi.natroutter.baudbound.gui.windows.LogsWindow;
 import fi.natroutter.baudbound.gui.windows.SimulateWindow;
 import fi.natroutter.baudbound.gui.windows.WebSocketWindow;
+import fi.natroutter.baudbound.http.WebhookDeliveryQueue;
 import fi.natroutter.baudbound.gui.windows.DocumentationWindow;
 import fi.natroutter.baudbound.gui.windows.StatesWindow;
 import fi.natroutter.baudbound.gui.windows.DevicesWindow;
@@ -115,6 +116,7 @@ public class BaudBound extends Application {
     @Getter private static FoxLogger logger;
     @Getter private static StorageProvider storageProvider;
     @Getter private static EventHandler eventHandler;
+    @Getter private static WebhookDeliveryQueue webhookDeliveryQueue;
     @Getter private static DeviceConnectionManager deviceConnectionManager;
     @Getter private static MessageDialog messageDialog;
     @Getter private static AboutDialog aboutDialog;
@@ -184,6 +186,8 @@ public class BaudBound extends Application {
         }
 
         storageProvider = new StorageProvider();
+        webhookDeliveryQueue = new WebhookDeliveryQueue(logger);
+        webhookDeliveryQueue.start();
         eventHandler = new EventHandler();
         deviceConnectionManager = new DeviceConnectionManager();
 
@@ -224,6 +228,7 @@ public class BaudBound extends Application {
         if (parsedArgs.isNoGui()) {
             logger.info(APP_NAME + " " + VERSION + " running in headless mode — press Ctrl+C to exit.");
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                if (webhookDeliveryQueue != null) webhookDeliveryQueue.stop();
                 storageProvider.save();
                 deviceConnectionManager.disconnectAll();
                 SingleInstanceManager.release();
@@ -391,9 +396,23 @@ public class BaudBound extends Application {
 
     @Override
     protected void configure(final Configuration config) {
+        forceX11OnWayland();
         config.setTitle(APP_NAME);
         config.setWidth(1280);
         config.setHeight(720);
+    }
+
+    /**
+     * GLFW/ImGui can fail to create a window on some Wayland compositors when libdecor/EGL
+     * negotiation breaks. Prefer XWayland there; headless mode never reaches this path.
+     */
+    private static void forceX11OnWayland() {
+        if (System.getenv("WAYLAND_DISPLAY") == null || System.getenv("DISPLAY") == null) return;
+        try {
+            GLFW.glfwInitHint(GLFW.GLFW_PLATFORM, GLFW.GLFW_PLATFORM_X11);
+        } catch (Throwable ignored) {
+            // Older GLFW builds may not expose platform selection; keep default behavior.
+        }
     }
 
     @Override
@@ -454,6 +473,7 @@ public class BaudBound extends Application {
     @Override
     public void dispose() {
         if (webSocketHandler != null) webSocketHandler.stopServer();
+        if (webhookDeliveryQueue != null) webhookDeliveryQueue.stop();
         logger.info("Saving storage...");
         storageProvider.save();
         deviceConnectionManager.disconnectAll();

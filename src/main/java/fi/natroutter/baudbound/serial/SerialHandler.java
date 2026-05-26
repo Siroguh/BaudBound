@@ -42,6 +42,7 @@ public class SerialHandler {
 
     private SerialPort port;
     private Thread listenerThread;
+    private volatile boolean reconnectLoopRunning = false;
 
     /**
      * Creates a handler for the given device. Auto-connect (if configured) is triggered
@@ -71,7 +72,14 @@ public class SerialHandler {
             return;
         }
 
-        port = SerialPort.getCommPort(device.getPort());
+        try {
+            port = SerialPort.getCommPort(device.getPort());
+        } catch (Exception e) {
+            status = ConnectionStatus.NO_DEVICE;
+            logger.error("[" + device.getName() + "] Invalid or unavailable port: " + device.getPort());
+            if (!shuttingDown && device.isAutoReconnect()) startReconnectLoop();
+            return;
+        }
         port.setBaudRate(device.getBaudRate() > 0 ? device.getBaudRate() : 9600);
         port.setNumDataBits(device.getDataBits() > 0 ? device.getDataBits() : 8);
         port.setNumStopBits(device.getStopBits() > 0 ? device.getStopBits() : 1);
@@ -99,6 +107,7 @@ public class SerialHandler {
         if (!port.openPort()) {
             status = ConnectionStatus.FAILED_TO_CONNECT;
             logger.error("[" + device.getName() + "] Failed to open port: " + device.getPort());
+            if (!shuttingDown && device.isAutoReconnect()) startReconnectLoop();
             return;
         }
 
@@ -219,24 +228,42 @@ public class SerialHandler {
     }
 
     private void startReconnectLoop() {
+        if (reconnectLoopRunning) return;
+        reconnectLoopRunning = true;
         Thread.ofVirtual().start(() -> {
-            long delayMs = device.getEffectiveReconnectDelay() * 1000L;
-            logger.info("[" + device.getName() + "] Auto-reconnect enabled — retrying every "
-                    + device.getEffectiveReconnectDelay() + " seconds...");
-            while (status == ConnectionStatus.NO_DEVICE) {
-                try {
-                    Thread.sleep(delayMs);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
+            try {
+                long delayMs = device.getEffectiveReconnectDelay() * 1000L;
+                int maxRetries = device.getEffectiveMaxRetries();
+                int attempts = 0;
+                logger.info("[" + device.getName() + "] Auto-reconnect enabled — retrying every "
+                        + device.getEffectiveReconnectDelay() + " seconds"
+                        + (maxRetries > 0 ? " up to " + maxRetries + " attempt(s)..." : "...") );
+                while (status == ConnectionStatus.NO_DEVICE || status == ConnectionStatus.FAILED_TO_CONNECT) {
+                    if (maxRetries > 0 && attempts >= maxRetries) {
+                        status = ConnectionStatus.DISCONNECTED;
+                        logger.warn("[" + device.getName() + "] Auto-reconnect stopped after "
+                                + attempts + " failed attempt(s).");
+                        break;
+                    }
+                    try {
+                        Thread.sleep(delayMs);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                    if (status != ConnectionStatus.NO_DEVICE && status != ConnectionStatus.FAILED_TO_CONNECT) break;
+                    if (device.isVerifyDevice() && !isExpectedDevice()) {
+                        logger.info("[" + device.getName() + "] Skipping reconnect — USB identity does not match.");
+                        attempts++;
+                        continue;
+                    }
+                    attempts++;
+                    logger.info("[" + device.getName() + "] Attempting to reconnect"
+                            + (maxRetries > 0 ? " (" + attempts + "/" + maxRetries + ")" : "") + "...");
+                    connect();
                 }
-                if (status != ConnectionStatus.NO_DEVICE) break;
-                if (device.isVerifyDevice() && !isExpectedDevice()) {
-                    logger.info("[" + device.getName() + "] Skipping reconnect — USB identity does not match.");
-                    continue;
-                }
-                logger.info("[" + device.getName() + "] Attempting to reconnect...");
-                connect();
+            } finally {
+                reconnectLoopRunning = false;
             }
         });
     }

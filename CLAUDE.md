@@ -26,6 +26,7 @@ fi.natroutter.baudbound/
 ├── websocket/
 │   └── WebSocketHandler.java # WebSocketServer subclass; optional token auth (AUTH:<token> first message); fires TriggerContext.webSocket() on message
 ├── http/HttpHandler.java     # Fires webhook HTTP requests
+├── http/WebhookDeliveryQueue.java # Persistent at-least-once webhook queue with ack checks and retries
 ├── serial/SerialHandler.java          # Connect / disconnect / read loop (per-device); fires DEVICE_CONNECTED/DEVICE_DISCONNECTED lifecycle events
 ├── serial/DeviceConnectionManager.java # Manages one SerialHandler per DataStore.Device
 ├── storage/                           # DataStore (POJO model) + StorageProvider (load/save)

@@ -4,6 +4,8 @@ import fi.natroutter.baudbound.enums.TriggerSource;
 import fi.natroutter.baudbound.storage.DataStore;
 import org.java_websocket.WebSocket;
 
+import java.util.concurrent.atomic.AtomicLong;
+
 /**
  * Immutable context object passed to {@link EventHandler#process(TriggerContext)} by every
  * trigger source. Carries the payload string, the originating device (if applicable), the
@@ -12,6 +14,7 @@ import org.java_websocket.WebSocket;
  * <p>Substitution tokens:
  * <ul>
  *   <li>{@code {input}} — the payload string for all sources</li>
+ *   <li>{@code {sequence}} — monotonic in-process trigger sequence</li>
  *   <li>{@code {channel}} — the WebSocket URL path (e.g. {@code /sensors/temp}); empty string for non-WS sources</li>
  *   <li>{@code {timestamp}} — ISO local date-time at action execution time</li>
  * </ul>
@@ -29,18 +32,25 @@ import org.java_websocket.WebSocket;
  * @param source     the trigger source that produced this context; never {@code null}
  * @param channel    the WebSocket URL path (e.g. {@code /sensors/temp}), or {@code null} for non-WS sources
  * @param connection the originating WebSocket connection for sending replies, or {@code null} for non-WS sources
+ * @param sequence   monotonic in-process trigger sequence
  */
 public record TriggerContext(
         String input,
         DataStore.Device device,
         TriggerSource source,
         String channel,
-        WebSocket connection
+        WebSocket connection,
+        long sequence
 ) {
+    private static final AtomicLong SEQUENCE = new AtomicLong(System.currentTimeMillis());
+
+    private static long nextSequence() {
+        return SEQUENCE.incrementAndGet();
+    }
 
     /** Creates a context for a serial input line. */
     public static TriggerContext serial(String input, DataStore.Device device) {
-        return new TriggerContext(input, device, TriggerSource.SERIAL, null, null);
+        return new TriggerContext(input, device, TriggerSource.SERIAL, null, null, nextSequence());
     }
 
     /**
@@ -51,17 +61,17 @@ public record TriggerContext(
      * @param connection the originating connection, used by the {@code SEND_WEBSOCKET} action
      */
     public static TriggerContext webSocket(String message, String channel, WebSocket connection) {
-        return new TriggerContext(message, null, TriggerSource.WEBSOCKET, channel, connection);
+        return new TriggerContext(message, null, TriggerSource.WEBSOCKET, channel, connection, nextSequence());
     }
 
     /** Creates a context fired when {@code device} successfully connects. */
     public static TriggerContext deviceConnected(DataStore.Device device) {
-        return new TriggerContext(device.getName(), device, TriggerSource.DEVICE_CONNECTED, null, null);
+        return new TriggerContext(device.getName(), device, TriggerSource.DEVICE_CONNECTED, null, null, nextSequence());
     }
 
     /** Creates a context fired when {@code device} disconnects (expected or unexpected). */
     public static TriggerContext deviceDisconnected(DataStore.Device device) {
-        return new TriggerContext(device.getName(), device, TriggerSource.DEVICE_DISCONNECTED, null, null);
+        return new TriggerContext(device.getName(), device, TriggerSource.DEVICE_DISCONNECTED, null, null, nextSequence());
     }
 
     /**

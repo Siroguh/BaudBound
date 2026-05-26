@@ -385,7 +385,12 @@ public class EventHandler {
                 .filter(w -> w.getName().equals(webhookName))
                 .findFirst()
                 .ifPresentOrElse(webhook -> {
-                    DataStore.Actions.Webhook resolved = resolveWebhook(webhook, context, eventName);
+                    String deliveryId = webhook.isDurableDelivery() ? UUID.randomUUID().toString() : null;
+                    DataStore.Actions.Webhook resolved = resolveWebhook(webhook, context, eventName, deliveryId);
+                    if (webhook.isDurableDelivery()) {
+                        BaudBound.getWebhookDeliveryQueue().enqueue(deliveryId, resolved, eventName);
+                        return;
+                    }
                     HttpHandler.WebhookResult result = HttpHandler.fireWebhook(resolved);
                     if (result.success()) {
                         logger.info("Webhook \"" + webhookName + "\" responded " + result.statusCode());
@@ -674,13 +679,14 @@ public class EventHandler {
      * Resolves all supported variable tokens in {@code template} using the full trigger context.
      * <p>Supported tokens:
      * <ul>
-     *   <li><b>Input:</b> {@code {input}}, {@code {input.upper}}, {@code {input.lower}},
+     *   <li><b>Input:</b> {@code {input}}, {@code {input.raw}}, {@code {input.upper}}, {@code {input.lower}},
      *       {@code {input.trim}}, {@code {input.length}}, {@code {input.word[N]}},
      *       {@code {input.line[N]}}, {@code {input.replace[old|new]}}, {@code {input.urlencoded}}</li>
      *   <li><b>Date/time:</b> {@code {timestamp}}, {@code {timestamp.unix}}, {@code {date}},
      *       {@code {time}}, {@code {year}}, {@code {month}}, {@code {day}},
      *       {@code {hour}}, {@code {minute}}, {@code {second}}</li>
-     *   <li><b>Trigger:</b> {@code {source}}, {@code {channel}}, {@code {event}}</li>
+     *   <li><b>Trigger:</b> {@code {source}}, {@code {channel}}, {@code {event}},
+     *       {@code {delivery.id}} for durable webhook templates</li>
      *   <li><b>Device:</b> {@code {device}}, {@code {device.port}}, {@code {device.baud}}</li>
      *   <li><b>States:</b> {@code {state}}, {@code {state[name]}}</li>
      *   <li><b>System:</b> {@code {hostname}}, {@code {username}}, {@code {env[VAR]}},
@@ -731,7 +737,8 @@ public class EventHandler {
         result = result
                 .replace("{source}",  context.source().name())
                 .replace("{channel}", channel)
-                .replace("{event}",   eventName != null ? eventName : "");
+                .replace("{event}",   eventName != null ? eventName : "")
+                .replace("{sequence}", String.valueOf(context.sequence()));
 
         // ---- Device (empty string when no device context) ----
         String devName = device != null && device.getName() != null ? device.getName() : "";
@@ -811,29 +818,63 @@ public class EventHandler {
         catch (Exception e) { return ""; }
     }
 
-    private DataStore.Actions.Webhook resolveWebhook(DataStore.Actions.Webhook original, TriggerContext context, String eventName) {
-        String input = context.input();
+    private DataStore.Actions.Webhook resolveWebhook(DataStore.Actions.Webhook original, TriggerContext context, String eventName, String deliveryId) {
+        String rawInput = context.input();
+        String input = preprocessInput(original, context.input());
         String resolvedInput = original.isUrlEscape()
                 ? URLEncoder.encode(input, StandardCharsets.UTF_8)
                 : input;
 
-        TriggerContext resolveCtx = original.isUrlEscape()
-                ? new TriggerContext(resolvedInput, context.device(), context.source(), context.channel(), context.connection())
-                : context;
+        TriggerContext resolveCtx = new TriggerContext(resolvedInput, context.device(), context.source(), context.channel(), context.connection(), context.sequence());
 
         List<DataStore.Actions.Webhook.Header> resolvedHeaders = original.getHeaders() == null ? List.of() :
                 original.getHeaders().stream()
-                        .map(h -> new DataStore.Actions.Webhook.Header(h.getKey(), resolve(h.getValue(), resolveCtx, eventName)))
+                        .map(h -> new DataStore.Actions.Webhook.Header(h.getKey(), resolve(h.getValue(), resolveCtx, eventName, deliveryId, rawInput)))
                         .toList();
 
         return new DataStore.Actions.Webhook(
                 original.getName(),
-                resolve(original.getUrl(), resolveCtx, eventName),
+                resolve(original.getUrl(), resolveCtx, eventName, deliveryId, rawInput),
                 original.getMethod(),
                 resolvedHeaders,
-                resolve(original.getBody(), resolveCtx, eventName),
-                original.isUrlEscape()
+                resolve(original.getBody(), resolveCtx, eventName, deliveryId, rawInput),
+                original.isUrlEscape(),
+                original.isDurableDelivery(),
+                original.getMaxAttempts(),
+                original.getRetryInitialMs(),
+                original.getRetryMaxMs(),
+                original.getAckBodyContains(),
+                original.getAckHeaderName(),
+                original.getAckHeaderValue(),
+                original.getInputRegex(),
+                original.getInputReplacement()
         );
+    }
+
+    private String resolve(String template, TriggerContext context, String eventName, String deliveryId) {
+        String resolved = resolve(template, context, eventName);
+        if (resolved == null) return null;
+        return resolved.replace("{delivery.id}", deliveryId != null ? deliveryId : "");
+    }
+
+    private String resolve(String template, TriggerContext context, String eventName, String deliveryId, String rawInput) {
+        String resolved = resolve(template, context, eventName, deliveryId);
+        if (resolved == null) return null;
+        return resolved.replace("{input.raw}", rawInput != null ? rawInput : "");
+    }
+
+    private String preprocessInput(DataStore.Actions.Webhook webhook, String input) {
+        String regex = webhook.getInputRegex();
+        if (regex == null || regex.isBlank()) return input;
+        try {
+            String replacement = webhook.getInputReplacement();
+            if (replacement == null) replacement = "$1";
+            Matcher matcher = Pattern.compile(regex).matcher(input);
+            return matcher.find() ? matcher.replaceFirst(replacement) : input;
+        } catch (Exception e) {
+            logger.error("Webhook \"" + webhook.getName() + "\" input preprocessing failed: " + e.getMessage());
+            return input;
+        }
     }
 
 }

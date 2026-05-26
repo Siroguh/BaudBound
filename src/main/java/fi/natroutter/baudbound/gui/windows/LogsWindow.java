@@ -14,8 +14,8 @@ import imgui.type.ImBoolean;
 import java.util.List;
 
 /**
- * Floating panel window that displays the in-session log buffer captured from
- * {@link BaudBound#getLogBuffer()}.
+ * Floating panel window that displays the in-session log buffer captured by
+ * {@link BaudBound}.
  * <p>
  * Each entry is color-coded by {@link LogLevel}: ERROR/FATAL in red, WARN in yellow,
  * INFO in green, and LOG in the default text color. The buffer holds up to

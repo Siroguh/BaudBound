@@ -34,7 +34,7 @@ BaudBound listens to serial devices and fires configurable actions whenever inco
 - **Device** — device equals, device not equals (filter by source device)
 
 ### Actions (12 types)
-- **Call webhook** — HTTP GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS with custom headers and body
+- **Call webhook** — HTTP GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS with custom headers, body, durable delivery, acknowledgement checks, WebSocket ACK support, retries, and input preprocessing
 - **Open URL** — open in the default system browser
 - **Launch program** — with optional arguments and Run As Admin
 - **Type text** — simulate keyboard input via clipboard paste
@@ -48,7 +48,7 @@ BaudBound listens to serial devices and fires configurable actions whenever inco
 
 ### Events & logic
 - **Multiple conditions and actions** per event
-- **Variable substitution** — use `{input}` and `{timestamp}` in any action value; optional URL-encoding for webhooks
+- **Variable substitution** — use `{input}`, `{timestamp}`, and `{delivery.id}` in webhook values; optional URL-encoding for webhooks
 - **State machine** — set and check named state variables to build multi-step flows
 - **Event ordering** — reorder events and control whether all matches fire or only the first
 - **Condition-first sorting** — optionally evaluate conditional events before unconditional ones

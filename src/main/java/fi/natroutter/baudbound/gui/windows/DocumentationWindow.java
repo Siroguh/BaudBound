@@ -249,6 +249,11 @@ public class DocumentationWindow extends BaseWindow {
 
         ImGui.separatorText("Call Webhook");
         ImGui.textWrapped("Fires an HTTP request to a saved webhook definition. Select the webhook from the dropdown. Configure webhooks under Actions -> Webhooks.");
+        ImGui.bulletText("Durable delivery queues the resolved request before sending and retries until acknowledged.");
+        ImGui.bulletText("Each durable attempt includes X-BaudBound-Delivery-Id and supports {delivery.id} in URL, headers, and body.");
+        ImGui.bulletText("Acknowledgement defaults to HTTP 2xx, and can additionally require a response body substring or response header.");
+        ImGui.bulletText("A WebSocket client can also acknowledge a pending delivery by sending ACK:<delivery.id>.");
+        ImGui.bulletText("Input regex/replacement can transform the COM message before {input} is resolved.");
 
         ImGui.spacing();
         ImGui.separatorText("Open Program");

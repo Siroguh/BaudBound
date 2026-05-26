@@ -57,6 +57,7 @@ public class DeviceEditorDialog extends BaseDialog {
     private final ImBoolean fieldAutoConnect    = new ImBoolean(false);
     private final ImBoolean fieldAutoReconnect  = new ImBoolean(false);
     private final ImInt     fieldReconnectDelay = new ImInt(5);
+    private final ImInt     fieldMaxRetries     = new ImInt(0);
     private final ImBoolean fieldVerifyDevice   = new ImBoolean(false);
 
     private List<SerialPort> availablePorts;
@@ -92,6 +93,7 @@ public class DeviceEditorDialog extends BaseDialog {
             fieldAutoConnect.set(device.isAutoConnect());
             fieldAutoReconnect.set(device.isAutoReconnect());
             fieldReconnectDelay.set(device.getEffectiveReconnectDelay());
+            fieldMaxRetries.set(device.getEffectiveMaxRetries());
             fieldVerifyDevice.set(device.isVerifyDevice());
         } else {
             this.editing = null;
@@ -105,6 +107,7 @@ public class DeviceEditorDialog extends BaseDialog {
             fieldAutoConnect.set(false);
             fieldAutoReconnect.set(false);
             fieldReconnectDelay.set(5);
+            fieldMaxRetries.set(0);
             fieldVerifyDevice.set(false);
         }
 
@@ -185,14 +188,23 @@ public class DeviceEditorDialog extends BaseDialog {
             ImGui.beginDisabled(!fieldAutoReconnect.get());
 
             ImGui.text("Reconnect delay");
+            ImGui.sameLine(ImGui.getContentRegionAvailX() * 0.5f);
+            ImGui.text("Max retries");
             float secLabelW = ImGui.calcTextSize("seconds").x + ImGui.getStyle().getItemSpacingX();
-            ImGui.setNextItemWidth(ImGui.getContentRegionAvailX() - secLabelW);
+            float columnW = (ImGui.getContentRegionAvailX() - ImGui.getStyle().getItemSpacingX()) * 0.5f;
+            ImGui.setNextItemWidth(columnW - secLabelW);
             if (ImGui.inputInt("##reconnectdelay", fieldReconnectDelay)) {
                 if (fieldReconnectDelay.get() < 1) fieldReconnectDelay.set(1);
             }
             ImGui.sameLine();
             ImGui.textDisabled("seconds");
             GuiHelper.toolTip("Number of seconds to wait between reconnect attempts.");
+            ImGui.sameLine();
+            ImGui.setNextItemWidth(columnW);
+            if (ImGui.inputInt("##maxretries", fieldMaxRetries)) {
+                if (fieldMaxRetries.get() < 0) fieldMaxRetries.set(0);
+            }
+            GuiHelper.toolTip("Maximum reconnect attempts. 0 means retry forever.");
 
             ImGui.checkbox("Verify device identity on reconnect", fieldVerifyDevice);
             GuiHelper.toolTip("Only reconnect if the USB identity (serial number, or vendor/product ID)\n"
@@ -302,6 +314,7 @@ public class DeviceEditorDialog extends BaseDialog {
         boolean autoConnect    = fieldAutoConnect.get();
         boolean autoReconnect  = fieldAutoReconnect.get();
         int     reconnectDelay = fieldReconnectDelay.get();
+        int     maxRetries     = fieldMaxRetries.get();
         boolean verifyDevice   = fieldVerifyDevice.get();
 
         // Capture USB identity when verify-device is enabled
@@ -331,6 +344,7 @@ public class DeviceEditorDialog extends BaseDialog {
             editing.setAutoConnect(autoConnect);
             editing.setAutoReconnect(autoReconnect);
             editing.setReconnectDelay(reconnectDelay);
+            editing.setMaxRetries(maxRetries);
             editing.setVerifyDevice(verifyDevice);
             editing.setDeviceSerial(deviceSerial);
             editing.setDeviceVendorId(deviceVendorId);
@@ -347,6 +361,7 @@ public class DeviceEditorDialog extends BaseDialog {
             d.setAutoConnect(autoConnect);
             d.setAutoReconnect(autoReconnect);
             d.setReconnectDelay(reconnectDelay);
+            d.setMaxRetries(maxRetries);
             d.setVerifyDevice(verifyDevice);
             d.setDeviceSerial(deviceSerial);
             d.setDeviceVendorId(deviceVendorId);

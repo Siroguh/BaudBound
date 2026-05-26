@@ -10,7 +10,7 @@ DataStore
 │   ├── Generic  (startHidden)
 │   └── Event    (runFirstOnly, conditionEventsFirst, skipEmptyConditions)
 ├── Actions
-│   ├── List<Webhook>  (name, url, method, headers, body, urlEscape)
+│   ├── List<Webhook>  (name, url, method, headers, body, urlEscape, durableDelivery, retry/ack fields, input preprocessing)
 │   └── List<Program>  (name, path, arguments, runAsAdmin)
 ├── List<Device>       (name, port, baudRate, dataBits, stopBits, parity, flowControl, autoConnect)
 └── List<Event>        (name, conditions, actions)
@@ -38,14 +38,15 @@ All classes use Lombok `@Data` + `@NoArgsConstructor` + `@AllArgsConstructor`. G
 
 ## Variable substitution
 
-`EventHandler.resolve(template, input)` replaces placeholders in webhook URLs, bodies, header values, program arguments, open-URL values, and typed text:
+`EventHandler.resolve(template, context, eventName)` replaces placeholders in webhook URLs, bodies, header values, program arguments, open-URL values, and typed text:
 
 | Placeholder | Replaced with |
 |---|---|
-| `{input}` | Raw serial line that triggered the event |
+| `{input}` | Trigger input. For webhooks this may be transformed first by the webhook's input regex/replacement. |
 | `{timestamp}` | `LocalDateTime.now()` formatted as ISO local date-time |
+| `{delivery.id}` | Durable webhook delivery id, blank for non-durable sends |
 
-See `event/EventHandler.java:178`.
+Durable webhooks are queued in `http/WebhookDeliveryQueue.java` before HTTP delivery is attempted. A queued item is removed after HTTP 2xx plus any configured body/header acknowledgement checks pass, or after an authenticated WebSocket client sends `ACK:<delivery.id>`. `maxAttempts = 0` means retry indefinitely.
 
 ## Enum utilities
 

@@ -234,6 +234,9 @@ public class DataStore {
         @SerializedName("reconnect_delay")
         private int reconnectDelay;
 
+        @SerializedName("max_retries")
+        private int maxRetries;
+
         @SerializedName("verify_device")
         private boolean verifyDevice;
 
@@ -254,6 +257,11 @@ public class DataStore {
             return reconnectDelay > 0 ? reconnectDelay : 5;
         }
 
+        /** Returns the maximum reconnect attempts. {@code 0} means retry forever. */
+        public int getEffectiveMaxRetries() {
+            return Math.max(0, maxRetries);
+        }
+
         /** Returns a fully independent deep copy of this device. */
         public Device deepCopy() {
             Device copy = new Device();
@@ -267,6 +275,7 @@ public class DataStore {
             copy.setAutoConnect(autoConnect);
             copy.setAutoReconnect(autoReconnect);
             copy.setReconnectDelay(reconnectDelay);
+            copy.setMaxRetries(maxRetries);
             copy.setVerifyDevice(verifyDevice);
             copy.setDeviceSerial(deviceSerial);
             copy.setDeviceVendorId(deviceVendorId);
@@ -389,11 +398,52 @@ public class DataStore {
             @SerializedName("url_escape")
             private boolean urlEscape;
 
+            @SerializedName("durable_delivery")
+            private boolean durableDelivery;
+
+            @SerializedName("max_attempts")
+            private int maxAttempts;
+
+            @SerializedName("retry_initial_ms")
+            private int retryInitialMs;
+
+            @SerializedName("retry_max_ms")
+            private int retryMaxMs;
+
+            @SerializedName("ack_body_contains")
+            private String ackBodyContains;
+
+            @SerializedName("ack_header_name")
+            private String ackHeaderName;
+
+            @SerializedName("ack_header_value")
+            private String ackHeaderValue;
+
+            @SerializedName("input_regex")
+            private String inputRegex;
+
+            @SerializedName("input_replacement")
+            private String inputReplacement;
+
+            public int getEffectiveMaxAttempts() {
+                return maxAttempts < 0 ? 0 : maxAttempts;
+            }
+
+            public int getEffectiveRetryInitialMs() {
+                return retryInitialMs > 0 ? retryInitialMs : 1_000;
+            }
+
+            public int getEffectiveRetryMaxMs() {
+                return retryMaxMs > 0 ? retryMaxMs : 60_000;
+            }
+
             /** Returns a fully independent deep copy of this webhook (headers list is not shared). */
             public Webhook deepCopy() {
                 List<Header> headersCopy = headers == null ? new ArrayList<>() :
                         headers.stream().map(h -> new Header(h.getKey(), h.getValue())).toList();
-                return new Webhook(name, url, method, headersCopy, body, urlEscape);
+                return new Webhook(name, url, method, headersCopy, body, urlEscape,
+                        durableDelivery, maxAttempts, retryInitialMs, retryMaxMs,
+                        ackBodyContains, ackHeaderName, ackHeaderValue, inputRegex, inputReplacement);
             }
 
             @Data

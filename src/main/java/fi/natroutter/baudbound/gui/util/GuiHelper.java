@@ -34,7 +34,6 @@ import java.util.function.Function;
  *   <li>{@link #clickableLink} — underlined, hand-cursor hyperlink text</li>
  *   <li>{@link #keyValueTable} — editable two-column key/value table with row reorder and delete</li>
  *   <li>{@link #toolTip} — inline {@code (?)} label with a hover tooltip</li>
- *   <li>{@link #instructions} — collapsible variable-substitution hint block</li>
  * </ul>
  */
 public class GuiHelper {
